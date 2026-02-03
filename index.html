@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Manager AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <i class="fas fa-brain"></i>
+                </div>
+                <div>
+                    <h1 class="logo-text">Bot Manager AI</h1>
+                    <p class="logo-subtext">Управление ботом с нейросетью</p>
+                </div>
+            </div>
+            <div id="botStatus" class="status-badge">
+                <div class="status-dot offline"></div>
+                <span>Проверка подключения...</span>
+            </div>
+        </header>
+
+        <!-- Основные карточки -->
+        <div class="main-grid">
+            <!-- Карточка отправки сообщений -->
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-paper-plane card-header-icon"></i>
+                    <h2>Отправка сообщений</h2>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Выберите чат</label>
+                    <div class="chat-selector">
+                        <select id="chatSelector" class="form-control">
+                            <option value="">Загружаем чаты...</option>
+                        </select>
+                        <button class="btn-icon" onclick="refreshChats()" title="Обновить список">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Текст сообщения</label>
+                    <textarea id="messageText" class="form-control" 
+                              placeholder="Введите текст сообщения..." rows="4"></textarea>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="sendMessage()">
+                        <i class="fas fa-paper-plane"></i> Отправить
+                    </button>
+                    <button class="btn btn-secondary" onclick="testMessage()">
+                        <i class="fas fa-vial"></i> Тест
+                    </button>
+                    <button class="btn btn-outline" onclick="clearMessage()">
+                        <i class="fas fa-eraser"></i> Очистить
+                    </button>
+                </div>
+
+                <div id="messageStatus" class="status-message"></div>
+            </div>
+
+            <!-- Карточка AI нейросети -->
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-robot card-header-icon"></i>
+                    <h2>Нейросеть AI</h2>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Команда в чате: <code>!бот [вопрос]</code></label>
+                    <div class="ai-example">
+                        <p class="ai-example-text">
+                            <span class="user">Пользователь:</span> !бот Как работает искусственный интеллект?
+                        </p>
+                        <p class="ai-example-text">
+                            <span class="bot">Бот AI:</span> 🤔 Думаю... [через 2 секунды] ИИ работает через нейронные сети...
+                        </p>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Тестовый AI запрос</label>
+                    <div class="input-with-button">
+                        <input type="text" id="aiTestQuestion" class="form-control" 
+                               placeholder="Введите вопрос для нейросети...">
+                        <button class="btn btn-primary" onclick="sendAITest()">
+                            <i class="fas fa-play"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="quick-ai-commands">
+                    <button class="quick-ai-btn" onclick="sendAIPreset('Что такое нейросеть?')">
+                        <i class="fas fa-network-wired"></i> Что такое нейросеть?
+                    </button>
+                    <button class="quick-ai-btn" onclick="sendAIPreset('Расскажи шутку про программистов')">
+                        <i class="fas fa-laugh"></i> Шутка про IT
+                    </button>
+                    <button class="quick-ai-btn" onclick="sendAIPreset('Объясни блокчейн простыми словами')">
+                        <i class="fas fa-link"></i> Про блокчейн
+                    </button>
+                    <button class="quick-ai-btn" onclick="sendAIPreset('Напиши короткое стихотворение')">
+                        <i class="fas fa-pen-fancy"></i> Стихотворение
+                    </button>
+                </div>
+
+                <div class="ai-status">
+                    <div class="ai-status-item">
+                        <i class="fas fa-satellite-dish"></i>
+                        <span>Статус AI: <span id="aiStatus" class="ai-status-text">Не активен</span></span>
+                    </div>
+                    <div class="ai-status-item">
+                        <i class="fas fa-history"></i>
+                        <span>Запросов: <span id="aiRequestsCount">0</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Карточка управления чатами -->
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-users card-header-icon"></i>
+                    <h2>Управление чатами</h2>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Добавить новый чат</label>
+                    <div class="input-with-button">
+                        <input type="text" id="newChatId" class="form-control" 
+                               placeholder="ID чата (например: -1001234567890)">
+                        <button class="btn btn-primary" onclick="addChat()">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                    <div class="form-hint">
+                        Чтобы получить ID чата, добавьте бота @getidsbot в чат
+                    </div>
+                </div>
+
+                <div class="chats-list-container">
+                    <div class="chats-header">
+                        <span>Сохранённые чаты</span>
+                        <span class="badge" id="chatsCount">0</span>
+                    </div>
+                    <div class="chats-list" id="chatsList">
+                        <div class="empty-state">
+                            <i class="fas fa-comments"></i>
+                            <p>Чатов пока нет</p>
+                            <p class="empty-state-sub">Добавьте первый чат</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="testAllChats()">
+                        <i class="fas fa-vial"></i> Проверить все
+                    </button>
+                    <button class="btn btn-outline" onclick="exportChats()">
+                        <i class="fas fa-download"></i> Экспорт
+                    </button>
+                    <button class="btn btn-danger" onclick="clearChats()">
+                        <i class="fas fa-trash"></i> Очистить
+                    </button>
+                </div>
+            </div>
+
+            <!-- Карточка мониторинга AI -->
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-chart-line card-header-icon"></i>
+                    <h2>Мониторинг AI</h2>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalMessages">0</div>
+                        <div class="stat-label">Всего сообщений</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="aiResponses">0</div>
+                        <div class="stat-label">AI ответов</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="successRate">100%</div>
+                        <div class="stat-label">Успешных</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="avgResponseTime">0с</div>
+                        <div class="stat-label">Время ответа</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Настройки AI</label>
+                    <div class="settings-group">
+                        <label class="checkbox">
+                            <input type="checkbox" id="enableAI" checked>
+                            <span>Включить AI команды</span>
+                        </label>
+                        <label class="checkbox">
+                            <input type="checkbox" id="aiNotifications" checked>
+                            <span>Уведомления об AI</span>
+                        </label>
+                        <label class="checkbox">
+                            <input type="checkbox" id="autoListen" checked>
+                            <span>Слушать чаты</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="saveSettings()">
+                        <i class="fas fa-save"></i> Сохранить
+                    </button>
+                    <button class="btn btn-secondary" onclick="checkBotStatus()">
+                        <i class="fas fa-sync-alt"></i> Проверить
+                    </button>
+                    <button class="btn btn-outline" onclick="startAIListening()">
+                        <i class="fas fa-play"></i> Запустить AI
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Логи AI запросов -->
+        <div class="card full-width">
+            <div class="card-header">
+                <i class="fas fa-history card-header-icon"></i>
+                <h2>Логи AI запросов</h2>
+                <div class="header-actions">
+                    <button class="btn-icon" onclick="clearAILogs()" title="Очистить логи">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    <button class="btn-icon" onclick="toggleAutoScroll()" title="Автопрокрутка">
+                        <i class="fas fa-scroll"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="ai-logs" id="aiLogs">
+                <div class="log-entry ai-log">
+                    <span class="log-time">[12:00:00]</span>
+                    <span class="log-source">[SYSTEM]</span>
+                    <span class="log-message">Система AI запущена</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Футер -->
+        <footer class="footer">
+            <div class="footer-info">
+                <div class="footer-item">
+                    <i class="fas fa-robot"></i>
+                    <span>Бот ID: <code>7847121145</code></span>
+                </div>
+                <div class="footer-item">
+                    <i class="fas fa-brain"></i>
+                    <span>AI Бот: <code>8241939804</code></span>
+                </div>
+                <div class="footer-item">
+                    <i class="fas fa-clock"></i>
+                    <span>Сессия: <span id="sessionTime">00:00:00</span></span>
+                </div>
+                <div class="footer-item">
+                    <i class="fas fa-comment"></i>
+                    <span>AI сегодня: <span id="aiToday">0</span></span>
+                </div>
+            </div>
+            <div class="footer-actions">
+                <button class="btn-icon" onclick="refreshAll()" title="Обновить всё">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                <button class="btn-icon" onclick="showAIHelp()" title="Помощь по AI">
+                    <i class="fas fa-question-circle"></i>
+                </button>
+                <button class="btn-icon" onclick="toggleAIMode()" title="Включить/выключить AI">
+                    <i class="fas fa-power-off"></i>
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
