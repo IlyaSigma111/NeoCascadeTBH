@@ -1,6 +1,9 @@
 // ===== КОНСТАНТЫ И ПЕРЕМЕННЫЕ =====
-const BOT_TOKEN = '7847121145:AAG0TjQZUsmFaB5gOlfnFh3RJDOIFt6yXYg';
-const API_URL = `https://api.telegram.org/bot${7847121145:AAG0TjQZUsmFaB5gOlfnFh3RJDOIFt6yXYg}`;
+const BOT_TOKEN = '7847121145:AAHP4QQrG71r2K@9CFsOkkxAsCQFKEnuCHM'; // Ваш токен
+// Правильно формируем URL с экранированием
+const BOT_TOKEN_ENCODED = encodeURIComponent(BOT_TOKEN);
+const API_URL = `https://api.telegram.org/bot${BOT_TOKEN_ENCODED}`;
+const PROXY_URL = 'http://localhost:3000/api/telegram'; // Для обхода CORS
 
 // AI бот (нейросеть)
 const AI_BOT_ID = '8241939804';
@@ -54,16 +57,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // Инициализируем UI
     updateUI();
     
-    // Проверяем статус бота
+    // Проверяем статус бота через прокси
     checkBotStatus();
     
     // Запускаем таймеры
     updateTimers();
     setInterval(updateTimers, 1000);
     
-    // Запускаем polling если включено
-    if (document.getElementById('autoListen').checked) {
-        setTimeout(() => startPolling(), 2000);
+    // Проверяем автопрослушивание
+    if (document.getElementById('autoListen')?.checked) {
+        setTimeout(() => checkAndStartPolling(), 2000);
     }
     
     // Добавляем первый лог
@@ -98,7 +101,7 @@ function loadChats() {
 function addDefaultGroup() {
     const defaultChat = {
         id: DEFAULT_GROUP_ID,
-        name: 'Основная группа',
+        name: 'Основная группа (тестовая)',
         added: new Date().toLocaleDateString(),
         messagesSent: 0,
         aiRequests: 0,
@@ -120,11 +123,19 @@ function loadStats() {
 }
 
 function loadSettings() {
-    const settings = JSON.parse(localStorage.getItem('ai_settings') || '{}');
-    document.getElementById('enableAI').checked = settings.enableAI !== false;
-    document.getElementById('aiNotifications').checked = settings.aiNotifications !== false;
-    document.getElementById('autoListen').checked = settings.autoListen !== false;
-    isAIActive = settings.enableAI !== false;
+    try {
+        const settings = JSON.parse(localStorage.getItem('ai_settings') || '{}');
+        document.getElementById('enableAI').checked = settings.enableAI !== false;
+        document.getElementById('aiNotifications').checked = settings.aiNotifications !== false;
+        document.getElementById('autoListen').checked = settings.autoListen !== false;
+        isAIActive = settings.enableAI !== false;
+    } catch (e) {
+        console.error('Ошибка загрузки настроек:', e);
+        isAIActive = true;
+        document.getElementById('enableAI').checked = true;
+        document.getElementById('aiNotifications').checked = true;
+        document.getElementById('autoListen').checked = false;
+    }
     updateAIStatus();
 }
 
@@ -327,6 +338,131 @@ function updateTimers() {
     document.getElementById('sessionTime').textContent = `${hours}:${minutes}:${seconds}`;
 }
 
+// ===== TELEGRAM API ФУНКЦИИ =====
+async function callTelegramAPI(method, params = {}) {
+    try {
+        // Способ 1: Через прокси (рекомендуется для GitHub Pages)
+        const proxyResponse = await fetch(PROXY_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                token: BOT_TOKEN,
+                method: method,
+                params: params
+            })
+        });
+        
+        if (proxyResponse.ok) {
+            return await proxyResponse.json();
+        }
+        
+        // Способ 2: Прямой вызов (если прокси не работает)
+        const formData = new FormData();
+        Object.keys(params).forEach(key => {
+            formData.append(key, params[key]);
+        });
+        
+        const directResponse = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        return await directResponse.json();
+        
+    } catch (error) {
+        console.error('Ошибка Telegram API:', error);
+        return { ok: false, description: error.message };
+    }
+}
+
+async function checkBotStatus() {
+    const statusBadge = document.getElementById('botStatus');
+    
+    try {
+        const data = await callTelegramAPI('getMe', {});
+        
+        if (data.ok) {
+            statusBadge.className = 'status-badge online';
+            statusBadge.innerHTML = `
+                <div class="status-dot online"></div>
+                <span>Бот онлайн: ${data.result.first_name}</span>
+            `;
+            addAILog('[BOT]', `Подключен: ${data.result.first_name} (@${data.result.username})`);
+        } else {
+            throw new Error(data.description || 'Неизвестная ошибка');
+        }
+    } catch (error) {
+        statusBadge.className = 'status-badge offline';
+        statusBadge.innerHTML = `
+            <div class="status-dot offline"></div>
+            <span>Бот офлайн: ${error.message}</span>
+        `;
+        addAILog('[BOT_ERROR]', `Ошибка подключения: ${error.message}`);
+    }
+}
+
+async function sendMessage() {
+    const chatId = document.getElementById('chatSelector').value;
+    const message = document.getElementById('messageText').value.trim();
+    
+    if (!chatId) {
+        showStatusMessage('Выберите чат для отправки', 'error');
+        return;
+    }
+    
+    if (!message) {
+        showStatusMessage('Введите текст сообщения', 'error');
+        return;
+    }
+    
+    showStatusMessage('<i class="fas fa-spinner fa-spin"></i> Отправка...', 'info');
+    
+    try {
+        const response = await callTelegramAPI('sendMessage', {
+            chat_id: chatId,
+            text: message,
+            parse_mode: 'HTML'
+        });
+        
+        if (response.ok) {
+            // Обновляем статистику
+            totalMessages++;
+            successfulSends++;
+            saveStats();
+            
+            // Обновляем чат
+            const chat = chats.find(c => c.id === chatId);
+            if (chat) {
+                chat.messagesSent = (chat.messagesSent || 0) + 1;
+                chat.lastUsed = new Date().toLocaleString();
+                saveChats();
+            }
+            
+            showStatusMessage('<i class="fas fa-check-circle"></i> Сообщение отправлено!', 'success');
+            addAILog('[MESSAGE]', `Отправлено в ${chatId}: ${message.substring(0, 30)}...`);
+            
+            // Очищаем поле
+            document.getElementById('messageText').value = '';
+        } else {
+            totalMessages++;
+            failedSends++;
+            saveStats();
+            
+            showStatusMessage(`<i class="fas fa-times-circle"></i> Ошибка: ${response.description}`, 'error');
+            addAILog('[ERROR]', `Ошибка отправки в ${chatId}: ${response.description}`);
+        }
+    } catch (error) {
+        totalMessages++;
+        failedSends++;
+        saveStats();
+        
+        showStatusMessage('<i class="fas fa-times-circle"></i> Ошибка сети', 'error');
+        addAILog('[ERROR]', `Ошибка сети: ${error.message}`);
+    }
+}
+
 // ===== AI ФУНКЦИИ =====
 async function queryAI(question) {
     if (!isAIActive) {
@@ -420,7 +556,6 @@ async function simulateAIResponse(question) {
     return responses[Math.floor(Math.random() * responses.length)];
 }
 
-// ===== ОБРАБОТКА КОМАНДЫ !БОТ =====
 async function handleAICommand(chatId, userId, messageText) {
     if (!messageText.toLowerCase().startsWith(AI_CONFIG.trigger.toLowerCase())) {
         return false;
@@ -435,7 +570,7 @@ async function handleAICommand(chatId, userId, messageText) {
     const question = messageText.substring(AI_CONFIG.trigger.length).trim();
     
     if (!question) {
-        await sendTelegramMessage(chatId, 
+        await sendMessageToChat(chatId, 
             `Используйте: ${AI_CONFIG.trigger} [ваш вопрос]\n\n` +
             `Пример: ${AI_CONFIG.trigger} Что такое нейросеть?`
         );
@@ -443,7 +578,7 @@ async function handleAICommand(chatId, userId, messageText) {
     }
     
     if (question.length > AI_CONFIG.maxLength) {
-        await sendTelegramMessage(chatId, 
+        await sendMessageToChat(chatId, 
             `❌ Вопрос слишком длинный (${question.length} символов).\n` +
             `Максимум: ${AI_CONFIG.maxLength} символов.`
         );
@@ -456,7 +591,7 @@ async function handleAICommand(chatId, userId, messageText) {
             Math.floor(Math.random() * AI_CONFIG.thinkingMessages.length)
         ];
         
-        const sentMessage = await sendTelegramMessage(chatId, 
+        const sentMessage = await sendMessageToChat(chatId, 
             `${thinkingMsg}\n\n` +
             `*Запрос:* ${question.substring(0, 80)}${question.length > 80 ? '...' : ''}`
         );
@@ -478,7 +613,7 @@ async function handleAICommand(chatId, userId, messageText) {
         }
         
         // Отправляем ответ в чат
-        await sendTelegramMessage(chatId,
+        await sendMessageToChat(chatId,
             `🧠 *Вопрос:* ${question}\n\n` +
             `🤖 *AI Ответ:*\n${aiResponse}\n\n` +
             `_Запросил: пользователь ID ${userId}_\n` +
@@ -488,13 +623,9 @@ async function handleAICommand(chatId, userId, messageText) {
         // Удаляем сообщение "думаю..."
         if (sentMessage && sentMessage.result && sentMessage.result.message_id) {
             try {
-                await fetch(`${API_URL}/deleteMessage`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        chat_id: chatId,
-                        message_id: sentMessage.result.message_id
-                    })
+                await callTelegramAPI('deleteMessage', {
+                    chat_id: chatId,
+                    message_id: sentMessage.result.message_id
                 });
             } catch (e) {
                 // Игнорируем ошибку удаления
@@ -513,7 +644,7 @@ async function handleAICommand(chatId, userId, messageText) {
             Math.floor(Math.random() * AI_CONFIG.errorMessages.length)
         ];
         
-        await sendTelegramMessage(chatId,
+        await sendMessageToChat(chatId,
             `❌ ${errorMsg}\n\n` +
             `*Ошибка:* ${error.message || 'Неизвестная ошибка'}\n` +
             `Попробуйте позже или обратитесь к администратору.`
@@ -527,7 +658,26 @@ async function handleAICommand(chatId, userId, messageText) {
     return true;
 }
 
-// ===== POLLING ДЛЯ ПРОСЛУШКИ СООБЩЕНИЙ =====
+async function sendMessageToChat(chatId, text, parseMode = 'HTML') {
+    return await callTelegramAPI('sendMessage', {
+        chat_id: chatId,
+        text: text,
+        parse_mode: parseMode
+    });
+}
+
+// ===== ПОЛЛИНГ =====
+async function checkAndStartPolling() {
+    try {
+        const data = await callTelegramAPI('getMe');
+        if (data.ok) {
+            startPolling();
+        }
+    } catch (e) {
+        console.log('Polling отложен:', e.message);
+    }
+}
+
 async function startPolling() {
     if (isPolling) return;
     
@@ -538,8 +688,11 @@ async function startPolling() {
         if (!isPolling) return;
         
         try {
-            const response = await fetch(`${API_URL}/getUpdates?offset=${lastUpdateId + 1}&timeout=30`);
-            const data = await response.json();
+            const data = await callTelegramAPI('getUpdates', {
+                offset: lastUpdateId + 1,
+                timeout: 30,
+                allowed_updates: ['message']
+            });
             
             if (data.ok && data.result.length > 0) {
                 for (const update of data.result) {
@@ -575,108 +728,6 @@ async function startPolling() {
 function stopPolling() {
     isPolling = false;
     addAILog('[POLLING]', 'Прослушивание остановлено');
-}
-
-// ===== TELEGRAM API ФУНКЦИИ =====
-async function checkBotStatus() {
-    const statusBadge = document.getElementById('botStatus');
-    
-    try {
-        const response = await fetch(`${API_URL}/getMe`);
-        const data = await response.json();
-        
-        if (data.ok) {
-            statusBadge.className = 'status-badge online';
-            statusBadge.innerHTML = `
-                <div class="status-dot online pulse"></div>
-                <span>Бот онлайн: ${data.result.first_name}</span>
-            `;
-            addAILog('[BOT]', `Подключен: ${data.result.first_name} (@${data.result.username})`);
-        } else {
-            throw new Error(data.description);
-        }
-    } catch (error) {
-        statusBadge.className = 'status-badge offline';
-        statusBadge.innerHTML = `
-            <div class="status-dot offline"></div>
-            <span>Бот офлайн: ${error.message}</span>
-        `;
-        addAILog('[BOT_ERROR]', `Ошибка подключения: ${error.message}`);
-    }
-}
-
-async function sendMessage() {
-    const chatId = document.getElementById('chatSelector').value;
-    const message = document.getElementById('messageText').value.trim();
-    
-    if (!chatId) {
-        showStatusMessage('Выберите чат для отправки', 'error');
-        return;
-    }
-    
-    if (!message) {
-        showStatusMessage('Введите текст сообщения', 'error');
-        return;
-    }
-    
-    showStatusMessage('<i class="fas fa-spinner fa-spin"></i> Отправка...', 'info');
-    
-    try {
-        const response = await sendTelegramMessage(chatId, message);
-        
-        if (response.ok) {
-            // Обновляем статистику
-            totalMessages++;
-            successfulSends++;
-            saveStats();
-            
-            // Обновляем чат
-            const chat = chats.find(c => c.id === chatId);
-            if (chat) {
-                chat.messagesSent = (chat.messagesSent || 0) + 1;
-                chat.lastUsed = new Date().toLocaleString();
-                saveChats();
-            }
-            
-            showStatusMessage('<i class="fas fa-check-circle"></i> Сообщение отправлено!', 'success');
-            addAILog('[MESSAGE]', `Отправлено в ${chatId}: ${message.substring(0, 30)}...`);
-            
-            // Очищаем поле
-            document.getElementById('messageText').value = '';
-        } else {
-            totalMessages++;
-            failedSends++;
-            saveStats();
-            
-            showStatusMessage(`<i class="fas fa-times-circle"></i> Ошибка: ${response.description}`, 'error');
-        }
-    } catch (error) {
-        totalMessages++;
-        failedSends++;
-        saveStats();
-        
-        showStatusMessage('<i class="fas fa-times-circle"></i> Ошибка сети', 'error');
-        addAILog('[ERROR]', `Ошибка отправки: ${error.message}`);
-    }
-}
-
-async function sendTelegramMessage(chatId, text, parseMode = null) {
-    const payload = {
-        chat_id: chatId,
-        text: text
-    };
-    
-    if (parseMode) {
-        payload.parse_mode = parseMode;
-    }
-    
-    const response = await fetch(`${API_URL}/sendMessage`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-    });
-    
-    return await response.json();
 }
 
 // ===== AI ТЕСТОВЫЕ ФУНКЦИИ =====
@@ -717,7 +768,7 @@ async function testMessage() {
     showStatusMessage('<i class="fas fa-spinner fa-spin"></i> Тестирование...', 'info');
     
     try {
-        await sendTelegramMessage(chatId,
+        await sendMessageToChat(chatId,
             '✅ *Тестовое сообщение от Bot Manager AI*\n\n' +
             'Время: ' + new Date().toLocaleTimeString() + '\n' +
             'Статус: Бот работает нормально\n' +
@@ -815,10 +866,8 @@ async function testAllChats() {
     
     for (const chat of chats) {
         try {
-            const response = await fetch(`${API_URL}/getChat`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ chat_id: chat.id })
+            const response = await callTelegramAPI('getChat', {
+                chat_id: chat.id
             });
             
             if (response.ok) {
@@ -859,10 +908,13 @@ function clearChats() {
 // ===== УТИЛИТЫ =====
 function initEventListeners() {
     // Автопрокрутка логов
-    document.getElementById('aiLogs').addEventListener('scroll', function() {
-        const atBottom = this.scrollHeight - this.clientHeight <= this.scrollTop + 50;
-        autoScroll = atBottom;
-    });
+    const logsContainer = document.getElementById('aiLogs');
+    if (logsContainer) {
+        logsContainer.addEventListener('scroll', function() {
+            const atBottom = this.scrollHeight - this.clientHeight <= this.scrollTop + 50;
+            autoScroll = atBottom;
+        });
+    }
 }
 
 function addAILog(source, message) {
@@ -970,6 +1022,8 @@ ${AI_CONFIG.trigger} Напиши шутку
 
 function showStatusMessage(message, type = 'info') {
     const statusDiv = document.getElementById('messageStatus');
+    if (!statusDiv) return;
+    
     statusDiv.className = `status-message show ${type}`;
     statusDiv.innerHTML = message;
     
@@ -981,23 +1035,7 @@ function showStatusMessage(message, type = 'info') {
     }
 }
 
-// ===== ОСНОВНАЯ ГРУППА ФУНКЦИИ =====
-function focusMainGroup() {
-    selectChat(DEFAULT_GROUP_ID);
-    showStatusMessage('Выбрана основная группа', 'success');
-}
-
-function testMainGroup() {
-    selectChat(DEFAULT_GROUP_ID);
-    testMessage();
-}
-
-function sendToMainGroup() {
-    selectChat(DEFAULT_GROUP_ID);
-    sendMessage();
-}
-
-// Экспортируем для использования в HTML
+// ===== ЭКСПОРТ ФУНКЦИЙ =====
 window.sendMessage = sendMessage;
 window.testMessage = testMessage;
 window.clearMessage = clearMessage;
@@ -1016,7 +1054,3 @@ window.toggleAutoScroll = toggleAutoScroll;
 window.toggleAIMode = toggleAIMode;
 window.refreshAll = refreshAll;
 window.showAIHelp = showAIHelp;
-window.focusMainGroup = focusMainGroup;
-window.testMainGroup = testMainGroup;
-window.sendToMainGroup = sendToMainGroup;
-
