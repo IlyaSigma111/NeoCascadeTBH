@@ -1,6 +1,6 @@
 // ===== КОНСТАНТЫ И ПЕРЕМЕННЫЕ =====
-const BOT_TOKEN = '7847121145:AAHP4QQrGZlr2K09CFs0kkxAsCQFKEnuCHM';
-const API_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
+const BOT_TOKEN = '7847121145:AAG0TjQZUsmFaB5gOlfnFh3RJDOIFt6yXYg';
+const API_URL = `https://api.telegram.org/bot${7847121145:AAG0TjQZUsmFaB5gOlfnFh3RJDOIFt6yXYg}`;
 
 // AI бот (нейросеть)
 const AI_BOT_ID = '8241939804';
@@ -1019,3 +1019,4 @@ window.showAIHelp = showAIHelp;
 window.focusMainGroup = focusMainGroup;
 window.testMainGroup = testMainGroup;
 window.sendToMainGroup = sendToMainGroup;
+
